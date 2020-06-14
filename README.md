@@ -1,58 +1,56 @@
-# Salesforce App
+# Typed JSON Parsing with Dynamic properties in Apex (working title)
 
-This guide helps Salesforce developers who are new to Visual Studio Code go from zero to a deployed app using Salesforce Extensions for VS Code and Salesforce CLI.
+## Background
 
-## Part 1: Choosing a Development Model
+Inspired by [Robert Sösemann's tweet](https://twitter.com/rsoesemann/status/1270484037551951872) and [StackExchange question](https://salesforce.stackexchange.com/questions/309042/handle-unknown-properties-with-typed-json-deserialize).
 
-There are two types of developer processes or models supported in Salesforce Extensions for VS Code and Salesforce CLI. These models are explained below. Each model offers pros and cons and is fully supported.
+The problem at hand is the ability to parse JSON with some known properties but still be able to dynamically access the one's you don't know. It felt like an interesting problem to solve in Apex so I took an (admitedly clunky) [first swing](https://gist.github.com/adrian-cg/1e4d7955d7e220d60b7815eb0b49757b) at it.
 
-### Package Development Model
+There were a few things wrong with this approach. Main two:
 
-The package development model allows you to create self-contained applications or libraries that are deployed to your org as a single package. These packages are typically developed against source-tracked orgs called scratch orgs. This development model is geared toward a more modern type of software development process that uses org source tracking, source control, and continuous integration and deployment.
+1. The amount of boilerplate: having to manually map known properties for deeply nested objects could get very cumbersome.
+2. The API ergonomics: The solution in the gist is very different from what Apex developers are used to:
 
-If you are starting a new project, we recommend that you consider the package development model. To start developing with this model in Visual Studio Code, see [Package Development Model with VS Code](https://forcedotcom.github.io/salesforcedx-vscode/articles/user-guide/package-development-model). For details about the model, see the [Package Development Model](https://trailhead.salesforce.com/en/content/learn/modules/sfdx_dev_model) Trailhead module.
+```apex
+public class SomeType {
+  public String field1;
+  public String field2;
+}
 
-If you are developing against scratch orgs, use the command `SFDX: Create Project` (VS Code) or `sfdx force:project:create` (Salesforce CLI)  to create your project. If you used another command, you might want to start over with that command.
-
-When working with source-tracked orgs, use the commands `SFDX: Push Source to Org` (VS Code) or `sfdx force:source:push` (Salesforce CLI) and `SFDX: Pull Source from Org` (VS Code) or `sfdx force:source:pull` (Salesforce CLI). Do not use the `Retrieve` and `Deploy` commands with scratch orgs.
-
-### Org Development Model
-
-The org development model allows you to connect directly to a non-source-tracked org (sandbox, Developer Edition (DE) org, Trailhead Playground, or even a production org) to retrieve and deploy code directly. This model is similar to the type of development you have done in the past using tools such as Force.com IDE or MavensMate.
-
-To start developing with this model in Visual Studio Code, see [Org Development Model with VS Code](https://forcedotcom.github.io/salesforcedx-vscode/articles/user-guide/org-development-model). For details about the model, see the [Org Development Model](https://trailhead.salesforce.com/content/learn/modules/org-development-model) Trailhead module.
-
-If you are developing against non-source-tracked orgs, use the command `SFDX: Create Project with Manifest` (VS Code) or `sfdx force:project:create --manifest` (Salesforce CLI) to create your project. If you used another command, you might want to start over with this command to create a Salesforce DX project.
-
-When working with non-source-tracked orgs, use the commands `SFDX: Deploy Source to Org` (VS Code) or `sfdx force:source:deploy` (Salesforce CLI) and `SFDX: Retrieve Source from Org` (VS Code) or `sfdx force:source:retrieve` (Salesforce CLI). The `Push` and `Pull` commands work only on orgs with source tracking (scratch orgs).
-
-## The `sfdx-project.json` File
-
-The `sfdx-project.json` file contains useful configuration information for your project. See [Salesforce DX Project Configuration](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_ws_config.htm) in the _Salesforce DX Developer Guide_ for details about this file.
-
-The most important parts of this file for getting started are the `sfdcLoginUrl` and `packageDirectories` properties.
-
-The `sfdcLoginUrl` specifies the default login URL to use when authorizing an org.
-
-The `packageDirectories` filepath tells VS Code and Salesforce CLI where the metadata files for your project are stored. You need at least one package directory set in your file. The default setting is shown below. If you set the value of the `packageDirectories` property called `path` to `force-app`, by default your metadata goes in the `force-app` directory. If you want to change that directory to something like `src`, simply change the `path` value and make sure the directory you’re pointing to exists.
-
-```json
-"packageDirectories" : [
-    {
-      "path": "force-app",
-      "default": true
-    }
-]
+SomeType wrapper = (SomeType)JSON.deserialize(jsonString, Sometype.class);
 ```
 
-## Part 2: Working with Source
+## Take 2
 
-For details about developing against scratch orgs, see the [Package Development Model](https://trailhead.salesforce.com/en/content/learn/modules/sfdx_dev_model) module on Trailhead or [Package Development Model with VS Code](https://forcedotcom.github.io/salesforcedx-vscode/articles/user-guide/package-development-model).
+With those two issues in mind, I tried again. The focus was on API Ergonomics and having as little boilerplate as possible. With this new approach you have:
 
-For details about developing against orgs that don’t have source tracking, see the [Org Development Model](https://trailhead.salesforce.com/content/learn/modules/org-development-model) module on Trailhead or [Org Development Model with VS Code](https://forcedotcom.github.io/salesforcedx-vscode/articles/user-guide/org-development-model).
+1. Very little boilerplate: You only need to have your classes extend DynamicJSON.Parsed.
+2. The API is pretty much the same as vanilla Apex:
 
-## Part 3: Deploying to Production
+```apex
+public class SomeType extends DynamicJSON.Parsed {
+  public String field1;
+  public String field2;
+}
 
-Don’t deploy your code to production directly from Visual Studio Code. The deploy and retrieve commands do not support transactional operations, which means that a deployment can fail in a partial state. Also, the deploy and retrieve commands don’t run the tests needed for production deployments. The push and pull commands are disabled for orgs that don’t have source tracking, including production orgs.
+SomeType wrapper = (SomeType)DynamicJSON.deserialize(jsonString, SomeType.class);
+```
 
-Deploy your changes to production using [packaging](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_dev2gp.htm) or by [converting your source](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference_force_source.htm#cli_reference_convert) into metadata format and using the [metadata deploy command](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference_force_mdapi.htm#cli_reference_deploy).
+There even is an easy way to access nested unkown properties:
+
+```apex
+/*
+{
+  "some": {
+    "deeplyNested" {
+      "property": "success"
+  }
+}
+*/
+
+wrapper.get('some.deeplyNested.property') //success
+```
+
+## Examples
+
+Some examples of how this works can be found in the [Apex Test Class](force-app/main/default/classes/DynamicJSONTest.cls).
